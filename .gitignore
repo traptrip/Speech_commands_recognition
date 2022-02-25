@@ -1,0 +1,8 @@
+.venv/
+.idea/
+.ipynb_checkpoints/
+data/
+pretrained_models/
+
+*.wav
+*.csv
