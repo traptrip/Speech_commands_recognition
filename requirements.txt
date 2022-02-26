@@ -9,3 +9,5 @@ jupyter
 notebook
 speechbrain
 scikit-learn
+datasets
+tensorboard
