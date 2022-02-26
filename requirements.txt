@@ -8,3 +8,4 @@ torchaudio
 jupyter
 notebook
 speechbrain
+scikit-learn
