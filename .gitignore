@@ -3,6 +3,8 @@
 .ipynb_checkpoints/
 data/
 pretrained_models/
-
+__pycache__/
 *.wav
 *.csv
+*.pt
+*.png

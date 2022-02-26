@@ -1,24 +1,25 @@
+import time
 from enum import auto
+from pathlib import Path
+
 import numpy as np
-import torch
 import pandas as pd
+import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+import torch.optim as opt
 import torchaudio
 import torchaudio.transforms as T
-from pathlib import Path
-from matplotlib import pyplot as plt
-import torch.optim as opt
-from tqdm import tqdm
-from torch import nn
 import torchvision.models as models
-import time
+from matplotlib import pyplot as plt
+from torch import nn
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 MAX_AUDIO_LEN = 16000  # в отсчётах sr
 DEVICE = "cuda:0"
-BATCH_SIZE = 128
-N_EPOCHS = 100
-VAL_ITER = 10
+BATCH_SIZE = 64
+N_EPOCHS = 10000
+VAL_ITER = 5
 CLASSES = [
     "down",
     "go",
@@ -84,22 +85,29 @@ class TrainData(Dataset):
         return len(self.classes)
 
     def __getitem__(self, idx):
-        noise_idx = np.random.randint(0, len(self.noises_paths) - 1)
+        audio = self.audio_paths[idx]
+        audio = self.__pad_audio(audio)
+
+        noise = self.__get_random_noize()
+        audio = self.__add_noise(audio, noise, 0, 6)
+        if np.random.randint(0, 1):
+            noise = self.__get_random_noize()
+            audio = self.__add_noise(audio, noise, 0, 6)
+
+        audio = audio / audio.abs().max()
+        melspec = self.mel_creator(audio)
+        # melspec = melspec * np.random.uniform(0.75, 1.5)
+
+        return melspec, CLASSES.index(self.classes[idx])
+
+    def __get_random_noize(self):
+        noise_idx = np.random.randint(0, len(self.noises_paths))
         noise = self.noises_paths[noise_idx]
-        # noise, _ = torchaudio.load(self.noises_paths[noise_idx])
         if noise.shape[0] == 2:
             noise = noise[np.random.randint(0, 2)]
             noise = noise.unsqueeze(0)
 
-        audio = self.audio_paths[idx]
-        # audio, _ = torchaudio.load(self.audio_paths[idx])
-        audio = self.__pad_audio(audio)
-        audio = self.__add_noise(audio, noise, 0, 6)
-        audio = audio / audio.abs().max()
-
-        melspec = self.mel_creator(audio)
-
-        return melspec, CLASSES.index(self.classes[idx])
+        return noise
 
     def __pad_audio(self, audio):
         if self.audio_len - audio.shape[-1] > 0:
@@ -115,6 +123,9 @@ class TrainData(Dataset):
         # так как шумная запись длиннее, то выбираем случайный момент начала шумной записи
         start = np.random.randint(0, noise.shape[1] - clean.shape[1] + 1)
         noise_part = noise[:, start : start + clean.shape[1]]
+
+        if noise_part.abs().max() == 0:
+            return clean
 
         # накладываем шум
         noise_mult = clean.abs().max() / noise_part.abs().max() * noise_amp
@@ -158,24 +169,25 @@ class TestData(Dataset):
 
 
 def load_model():
-    # model = torch.hub.load(
-    #     "NVIDIA/DeepLearningExamples:torchhub",
-    #     "nvidia_efficientnet_b0",
-    #     pretrained=False,
-    # )
-    # model.stem.conv = nn.Conv2d(
-    #     1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False
-    # )
-    # num_ftrs = model.classifier.fc.in_features
-    # model.classifier.fc = nn.Linear(num_ftrs, 10, bias=True)
-
-    model = models.resnet18()
-    # print(model)
-    model.conv1 = nn.Conv2d(
-        1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+    # === Efficientnet ===
+    model = torch.hub.load(
+        "NVIDIA/DeepLearningExamples:torchhub",
+        "nvidia_efficientnet_b0",
+        pretrained=False,
     )
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, 10, bias=True)
+    model.stem.conv = nn.Conv2d(
+        1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False
+    )
+    num_ftrs = model.classifier.fc.in_features
+    model.classifier.fc = nn.Linear(num_ftrs, 10, bias=True)
+
+    # # === Resnet 16 ===
+    # model = models.resnet18()
+    # model.conv1 = nn.Conv2d(
+    #     1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+    # )
+    # num_ftrs = model.fc.in_features
+    # model.fc = nn.Linear(num_ftrs, 10, bias=True)
 
     return model
 
@@ -186,12 +198,12 @@ if __name__ == "__main__":
     noise_dir = Path("hackaton_ds/noises")
     train_dir = Path("hackaton_ds/train")
     train = TrainData(train_dir, noise_dir)
-    train_loader = DataLoader(train, batch_size=BATCH_SIZE, shuffle=True, num_workers=6)
+    train_loader = DataLoader(train, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
     test_dir = Path("hackaton_ds/test")
     test_markup = Path("hackaton_ds/submission_xvector_cos_sim.csv")
     test = TestData(test_dir, test_markup)
-    val_loader = DataLoader(test, batch_size=BATCH_SIZE, shuffle=False, num_workers=6)
+    val_loader = DataLoader(test, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
 
     model = load_model().to(DEVICE)
     optimizer = opt.AdamW(model.parameters(), lr=0.001)
@@ -206,19 +218,17 @@ if __name__ == "__main__":
         train_loss = list()
         for X, Y in tqdm(train_loader):
             preds = model.forward(X.to(DEVICE))
-            # print(Y)
             loss = F.cross_entropy(
                 preds,
                 Y.to(DEVICE),
             )
-            print(loss)
+            # print(loss)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             train_loss.append(loss.cpu().data.numpy())
             train_acc.extend((torch.argmax(preds, dim=-1).cpu() == Y).data.numpy())
-            # print(train_loss)
 
         if epoch % VAL_ITER == 0:
             model.eval()
@@ -231,9 +241,6 @@ if __name__ == "__main__":
                     preds,
                     Y.to(DEVICE),
                 )
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
 
                 val_loss.append(loss.cpu().data.numpy())
                 val_acc.extend((torch.argmax(preds, dim=-1).cpu() == Y).data.numpy())
@@ -242,8 +249,8 @@ if __name__ == "__main__":
         epoch_time = time.time() - start
         train_acc = sum(train_acc) / len(train_acc)
         train_loss = sum(train_loss) / len(train_loss)
-        val_acc = sum(val_acc) / len(val_acc)
-        val_loss = sum(val_loss) / len(val_loss)
+        val_acc1 = sum(val_acc) / len(val_acc)
+        val_loss1 = sum(val_loss) / len(val_loss)
         print(
-            f"Epoch time: {epoch_time:.2}|Train acc: {train_acc:.2}|Train loss: {train_loss:.2}|Val acc: {val_acc:.2}|Val loss: {val_loss:.2}"
+            f"Epoch time: {epoch_time:.2}|Train acc: {train_acc:.2}|Train loss: {train_loss:.2}|Val acc: {val_acc1:.2}|Val loss: {val_loss1:.2}"
         )
