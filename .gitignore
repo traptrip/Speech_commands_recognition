@@ -3,6 +3,18 @@
 .ipynb_checkpoints/
 data/
 pretrained_models/
+__pycache__/
+results/
+models/
+data/
+rirs/
+catboost_info/
 
 *.wav
 *.csv
+*.pkl
+*.json
+*.wav
+*.csv
+*.pt
+*.png

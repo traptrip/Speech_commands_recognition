@@ -9,3 +9,7 @@ jupyter
 notebook
 speechbrain
 scikit-learn
+datasets
+tensorboard
+librosa
+catboost
