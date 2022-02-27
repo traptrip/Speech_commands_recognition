@@ -141,8 +141,7 @@ if __name__ == "__main__":
 
     print(clf.score(test_answers, classes))
 
-    test_answers = clf.predict(test_answers)
-    print(test_answers.shape)
+    test_answers = clf.predict(test_answers).reshape((len(test_answers)))
 
     submission = pd.read_csv(test_markup, engine="python")
     submission["category"] = pd.Series(test_answers).apply(lambda x: CLASSES[x])

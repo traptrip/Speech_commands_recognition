@@ -40,6 +40,10 @@ def load_audio(path):
 
 
 def resnet_train_infer(model):
+    if (PROJECT_DIR / "models/resnet_train_answers.npy").exists():
+        with open(PROJECT_DIR / "models/resnet_train_answers.npy", "rb") as f:
+            return np.load(f)
+
     noise_dir = PROJECT_DIR / "data/noises"
     train_dir = PROJECT_DIR / "data/train"
     train = ResnetTrainData(train_dir, noise_dir)
@@ -56,6 +60,10 @@ def resnet_train_infer(model):
 
 
 def efficientnet_train_infer(model):
+    if (PROJECT_DIR / "models/efficientnet_train_answers.npy").exists():
+        with open(PROJECT_DIR / "models/efficientnet_train_answers.npy", "rb") as f:
+            return np.load(f)
+
     noise_dir = PROJECT_DIR / "data/noises"
     train_dir = PROJECT_DIR / "data/train"
     train = EfficientnetTrainData(train_dir, noise_dir)
@@ -73,6 +81,10 @@ def efficientnet_train_infer(model):
 
 
 def xvector_infer_train(enc_classifier):
+    if (PROJECT_DIR / "models/xvec_train_ans.npy").exists():
+        with open(PROJECT_DIR / "models/xvec_train_ans.npy", "rb") as f:
+            return np.load(f)
+
     test_audio_filepaths = sorted(list((PROJECT_DIR / "data/train").rglob("*.wav")))
     # pred = []
     probas = []
@@ -126,6 +138,8 @@ if __name__ == "__main__":
 
     classes = [CLASSES.index(class_name) for class_name in classes1]
     # efficientnet_train_answers, _ = efficientnet_train_infer(efficientnet)
+    # with open(PROJECT_DIR / "models/efficientnet_train_answers.npy", "wb") as f:
+    #     np.save(f, efficientnet_train_answers)
 
     xvector_ans, classes2 = xvector_infer_train(enc_classifier)
     with open(PROJECT_DIR / "models/xvector_train_ans.npy", "wb") as f:
@@ -146,7 +160,7 @@ if __name__ == "__main__":
 
     clf = CatBoostClassifier(
         auto_class_weights="SqrtBalanced",
-        # iterations=3000,
+        iterations=2000,
         eval_metric="AUC",
     )
     clf.fit(
