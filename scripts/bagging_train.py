@@ -40,14 +40,15 @@ def load_audio(path):
 
 
 def resnet_train_infer(model):
-    if (PROJECT_DIR / "models/resnet_train_answers.npy").exists():
-        with open(PROJECT_DIR / "models/resnet_train_answers.npy", "rb") as f:
-            return np.load(f)
 
     noise_dir = PROJECT_DIR / "data/noises"
     train_dir = PROJECT_DIR / "data/train"
     train = ResnetTrainData(train_dir, noise_dir)
     train_loader = DataLoader(train, batch_size=1, shuffle=False, num_workers=0)
+
+    if (PROJECT_DIR / "models/resnet_train_answers.npy").exists():
+        with open(PROJECT_DIR / "models/resnet_train_answers.npy", "rb") as f:
+            return np.load(f), train.classes
 
     train_answers = list()
     for X, _ in tqdm(train_loader):
@@ -62,7 +63,7 @@ def resnet_train_infer(model):
 def efficientnet_train_infer(model):
     if (PROJECT_DIR / "models/efficientnet_train_answers.npy").exists():
         with open(PROJECT_DIR / "models/efficientnet_train_answers.npy", "rb") as f:
-            return np.load(f)
+            return np.load(f), []
 
     noise_dir = PROJECT_DIR / "data/noises"
     train_dir = PROJECT_DIR / "data/train"
@@ -83,7 +84,7 @@ def efficientnet_train_infer(model):
 def xvector_infer_train(enc_classifier):
     if (PROJECT_DIR / "models/xvec_train_ans.npy").exists():
         with open(PROJECT_DIR / "models/xvec_train_ans.npy", "rb") as f:
-            return np.load(f)
+            return np.load(f), []
 
     test_audio_filepaths = sorted(list((PROJECT_DIR / "data/train").rglob("*.wav")))
     # pred = []
