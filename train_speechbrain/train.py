@@ -37,7 +37,7 @@ device = "cuda"
 
 # Brain class for speech enhancement training
 class FineTune(sb.Brain):
-    noises = [torchaudio.load(wav_path)[0] for wav_path in noises_paths]
+    # noises = [torchaudio.load(wav_path)[0] for wav_path in noises_paths]
 
     def __add_noise(self, clean, noise, min_amp, max_amp):
         noise = noise.to(self.device)

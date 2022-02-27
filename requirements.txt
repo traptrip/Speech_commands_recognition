@@ -11,3 +11,5 @@ speechbrain
 scikit-learn
 datasets
 tensorboard
+librosa
+catboost
