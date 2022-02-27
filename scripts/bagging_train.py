@@ -11,12 +11,15 @@ from tqdm import tqdm
 import torchaudio
 from speechbrain.pretrained import EncoderClassifier
 from catboost import CatBoostClassifier
+from sklearn.neighbors import KNeighborsClassifier
 
 from efficientnet_train import CLASSES, DEVICE
 from efficientnet_train import TrainData as EfficientnetTrainData
 from efficientnet_train import TestData
 from efficientnet_train import load_model as load_efficientnet_model
 from resnet_train import TrainData as ResnetTrainData
+from resnet_train import TrainData2 as ResnetTrainData2
+
 from resnet_train import load_model as load_resnet_model
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -32,6 +35,12 @@ enc_classifier = EncoderClassifier.from_hparams(
 audio_normalizer = enc_classifier.audio_normalizer
 label_encoder = enc_classifier.hparams.label_encoder
 rel_length = torch.tensor([1.0])
+N_NEIGHBORS = 20
+classifier = KNeighborsClassifier(
+    n_neighbors=N_NEIGHBORS,
+    metric="cosine",
+    n_jobs=-1,
+)
 
 
 def load_audio(path):
@@ -39,7 +48,7 @@ def load_audio(path):
     return audio_normalizer(signal, sr)
 
 
-def resnet_train_infer(model):
+def resnet_train_infer1(model):
 
     noise_dir = PROJECT_DIR / "data/noises"
     train_dir = PROJECT_DIR / "data/train"
@@ -48,6 +57,27 @@ def resnet_train_infer(model):
 
     if (PROJECT_DIR / "models/resnet_train_answers.npy").exists():
         with open(PROJECT_DIR / "models/resnet_train_answers.npy", "rb") as f:
+            return np.load(f), train.classes
+
+    train_answers = list()
+    for X, _ in tqdm(train_loader):
+        # X = X.unsqueeze(0)
+        preds = model.forward(X.to(DEVICE))
+        logists = softmax(preds[0]).cpu().data.numpy()
+        train_answers.append(logists)
+        # break
+    return np.asfarray(train_answers), train.classes
+
+
+def resnet_train_infer2(model):
+
+    noise_dir = PROJECT_DIR / "data/noises"
+    train_dir = PROJECT_DIR / "data/train"
+    train = ResnetTrainData2(train_dir, noise_dir)
+    train_loader = DataLoader(train, batch_size=1, shuffle=False, num_workers=0)
+
+    if (PROJECT_DIR / "models/resnet2_train_answers.npy").exists():
+        with open(PROJECT_DIR / "models/resnet2_train_answers.npy", "rb") as f:
             return np.load(f), train.classes
 
     train_answers = list()
@@ -90,10 +120,14 @@ def xvector_infer_train(enc_classifier):
     # pred = []
     probas = []
     classes = []
+    embs = []
     for audiofile in tqdm(test_audio_filepaths):
         wav = load_audio(audiofile).unsqueeze(0)
+
+        # emb = enc_classifier.encode_batch(wav, rel_length)
+        # embs.append(emb)
+
         output = enc_classifier.classify_batch(wav, rel_length)
-        # class_name = output[-1][-1]
         out_probs = output[0]
         out_probs = softmax(out_probs[0]).cpu().data.numpy()
 
@@ -127,29 +161,42 @@ if __name__ == "__main__":
     resnet.load_state_dict(torch.load(PROJECT_DIR / "models/resnet16_95ep.pt"))
     resnet.eval()
 
-    # efficientnet = load_efficientnet_model().to(DEVICE)
-    # efficientnet.load_state_dict(
-    #     torch.load(PROJECT_DIR / "models/efficientnet_70ep.pt")
-    # )
-    # efficientnet.eval()
+    resnet2 = load_resnet_model().to(DEVICE)
+    resnet2.load_state_dict(torch.load(PROJECT_DIR / "models/resnet16_2.pt"))
+    resnet2.eval()
 
-    resnet_train_answers, classes1 = resnet_train_infer(resnet)
+    efficientnet = load_efficientnet_model().to(DEVICE)
+    efficientnet.load_state_dict(
+        torch.load(PROJECT_DIR / "models/efficientnet_70ep.pt")
+    )
+    efficientnet.eval()
+
+    resnet_train_answers, classes1 = resnet_train_infer1(resnet)
     with open(PROJECT_DIR / "models/resnet_train_answers.npy", "wb") as f:
         np.save(f, resnet_train_answers)
 
+    resnet2_train_answers, classes1 = resnet_train_infer2(resnet2)
+    with open(PROJECT_DIR / "models/resnet2_train_answers.npy", "wb") as f:
+        np.save(f, resnet2_train_answers)
+
     classes = [CLASSES.index(class_name) for class_name in classes1]
-    # efficientnet_train_answers, _ = efficientnet_train_infer(efficientnet)
-    # with open(PROJECT_DIR / "models/efficientnet_train_answers.npy", "wb") as f:
-    #     np.save(f, efficientnet_train_answers)
+    efficientnet_train_answers, _ = efficientnet_train_infer(efficientnet)
+    with open(PROJECT_DIR / "models/efficientnet_train_answers.npy", "wb") as f:
+        np.save(f, efficientnet_train_answers)
 
     xvector_ans, classes2 = xvector_infer_train(enc_classifier)
     with open(PROJECT_DIR / "models/xvec_train_ans.npy", "wb") as f:
         np.save(f, xvector_ans)
 
-    # print(xvector_ans)
-    # print(efficientnet_train_answers)
-
-    train_answers = np.concatenate((resnet_train_answers, xvector_ans), axis=1)
+    train_answers = np.concatenate(
+        (
+            resnet_train_answers,
+            resnet2_train_answers,
+            efficientnet_train_answers,
+            xvector_ans,
+        ),
+        axis=1,
+    )
 
     print(train_answers.shape)
 
@@ -160,14 +207,13 @@ if __name__ == "__main__":
     #     pickle.dump(clf, f)
 
     clf = CatBoostClassifier(
+        task_type="GPU",
+        devices=[0],
         auto_class_weights="SqrtBalanced",
-        iterations=2000,
+        iterations=2500,
         eval_metric="AUC",
     )
-    clf.fit(
-        train_answers,
-        classes,
-    )
+    clf.fit(train_answers, classes, verbose=1)
     print("Saving model")
     clf.save_model(str(PROJECT_DIR / "models/cat.cbm"))
 

@@ -51,6 +51,21 @@ def resnet_infer(model, test):
     return np.asfarray(test_answers)
 
 
+def resnet_infer2(model, test):
+    if (PROJECT_DIR / "models/resnet2_test_answers.npy").exists():
+        with open(PROJECT_DIR / "models/resnet2_test_answers.npy", "rb") as f:
+            return np.load(f)
+
+    test_answers = list()
+    for X, _ in tqdm(test):
+        X = X.unsqueeze(0)
+        preds = model.forward(X.to(DEVICE))
+        logists = softmax(preds[0]).cpu().data.numpy()
+        test_answers.append(logists)
+
+    return np.asfarray(test_answers)
+
+
 def efficient_infer(model, test):
     if (PROJECT_DIR / "models/efficientnet_test_answers.npy").exists():
         with open(PROJECT_DIR / "models/efficientnet_test_answers.npy", "rb") as f:
@@ -109,17 +124,23 @@ if __name__ == "__main__":
     resnet.load_state_dict(torch.load(PROJECT_DIR / "models/resnet16_95ep.pt"))
     resnet.eval()
 
-    # efficientnet = load_efficientnet_model().to(DEVICE)
-    # efficientnet.load_state_dict(
-    #     torch.load(PROJECT_DIR / "models/efficientnet_70ep.pt")
-    # )
-    # efficientnet.eval()
+    resnet2 = load_resnet_model().to(DEVICE)
+    resnet2.load_state_dict(torch.load(PROJECT_DIR / "models/resnet16_2.pt"))
+    resnet2.eval()
+
+    efficientnet = load_efficientnet_model().to(DEVICE)
+    efficientnet.load_state_dict(
+        torch.load(PROJECT_DIR / "models/efficientnet_70ep.pt")
+    )
+    efficientnet.eval()
 
     # with open(str(PROJECT_DIR / "models/log_reg.pkl"), "rb") as f:
     #     clf = pickle.load(f)
     clf = CatBoostClassifier(
+        task_type="GPU",
+        devices=[0],
         auto_class_weights="SqrtBalanced",
-        # iterations=3000,
+        iterations=2500,
         eval_metric="AUC",
     )
     clf.load_model(str(PROJECT_DIR / "models/cat.cbm"))
@@ -128,15 +149,27 @@ if __name__ == "__main__":
     with open(PROJECT_DIR / "models/resnet_test_answers.npy", "wb") as f:
         np.save(f, resnet_test_answers)
 
-    # efficientnet_test_answers = efficient_infer(efficientnet, test)
-    # with open(PROJECT_DIR / "models/efficientnet_test_answers.npy", "wb") as f:
-    #     np.save(f, efficientnet_test_answers)
+    resnet2_test_answers = resnet_infer2(resnet2, test)
+    with open(PROJECT_DIR / "models/resnet2_test_answers.npy", "wb") as f:
+        np.save(f, resnet2_test_answers)
+
+    efficientnet_test_answers = efficient_infer(efficientnet, test)
+    with open(PROJECT_DIR / "models/efficientnet_test_answers.npy", "wb") as f:
+        np.save(f, efficientnet_test_answers)
 
     xvec_ans = xvector_infer_train(enc_classifier)
     with open(PROJECT_DIR / "models/xvec_test_ans.npy", "wb") as f:
         np.save(f, xvec_ans)
 
-    test_answers = np.concatenate((resnet_test_answers, xvec_ans), axis=1)
+    test_answers = np.concatenate(
+        (
+            resnet_test_answers,
+            resnet2_test_answers,
+            efficientnet_test_answers,
+            xvec_ans,
+        ),
+        axis=1,
+    )
     classes = [CLASSES.index(class_name) for class_name in test.classes]
 
     print(clf.score(test_answers, classes))
@@ -145,6 +178,4 @@ if __name__ == "__main__":
 
     submission = pd.read_csv(test_markup, engine="python")
     submission["category"] = pd.Series(test_answers).apply(lambda x: CLASSES[x])
-    submission.to_csv(
-        PROJECT_DIR / "submission_BAGGING_resnet_xvector_cat.csv", index=None
-    )
+    submission.to_csv(PROJECT_DIR / "submission_BAGGING_PRO.csv", index=None)

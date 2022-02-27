@@ -14,8 +14,9 @@ from matplotlib import pyplot as plt
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+from torchaudio.sox_effects import apply_effects_tensor
 
-MAX_AUDIO_LEN = 16000  # в отсчётах sr
+MAX_AUDIO_LEN = 32000  # в отсчётах sr
 DEVICE = "cuda:0"
 BATCH_SIZE = 64
 N_EPOCHS = 10000
@@ -102,6 +103,102 @@ class TrainData(Dataset):
 
     def __get_random_noize(self):
         noise_idx = np.random.randint(0, len(self.noises_paths) - 1)
+        noise = self.noises_paths[noise_idx]
+        if noise.shape[0] == 2:
+            noise = noise[np.random.randint(0, 2)]
+            noise = noise.unsqueeze(0)
+
+        return noise
+
+    def __pad_audio(self, audio):
+        if self.audio_len - audio.shape[-1] > 0:
+            i = np.random.randint(0, self.audio_len - audio.shape[-1])
+        else:
+            i = 0
+        pad_patern = (i, self.audio_len - audio.shape[-1] - i)
+        audio = F.pad(audio, pad_patern, "constant").detach()
+        return audio
+
+    def __add_noise(self, clean, noise, min_amp, max_amp):
+        noise_amp = np.random.uniform(min_amp, max_amp)
+        # так как шумная запись длиннее, то выбираем случайный момент начала шумной записи
+        start = np.random.randint(0, noise.shape[1] - clean.shape[1] + 1)
+        noise_part = noise[:, start : start + clean.shape[1]]
+
+        if noise_part.abs().max() == 0:
+            return clean
+
+        # накладываем шум
+        noise_mult = clean.abs().max() / noise_part.abs().max() * noise_amp
+        return (clean + noise_part * noise_mult) / (1 + noise_amp)
+
+
+class TrainData2(Dataset):
+    def __init__(self, audio_dir: Path, noise_dir: Path) -> None:
+        super().__init__()
+        self.audio_len = 32000
+        self.mel_creator = MelCreator()
+
+        self.audio_paths = list()
+        self.classes = list()
+
+        audioss = sorted(list(audio_dir.rglob("*.wav")))
+        for wav_path in audioss:
+            audio, _ = torchaudio.load(wav_path)
+            self.audio_paths.append(audio)
+            self.classes.append(wav_path.parts[-2])
+
+        self.noises_paths = list()
+        for wav_path in noise_dir.iterdir():
+            noise, _ = torchaudio.load(wav_path)
+            self.noises_paths.append(noise)
+
+    def __len__(self):
+        return len(self.classes)
+
+    def __getitem__(self, idx):
+        audio = self.audio_paths[idx]
+
+        # === Меняем скорость произношения ===
+        audio = self.__random_speed(audio)
+
+        # === Добиваем до целевой размерности ===
+        audio = self.__pad_audio(audio)
+
+        # === Меняем высоту голоса ===
+        # audio = self.__random_pitch_shift(audio)
+
+        # === Накладываем шум ===
+        noise = self.__get_random_noize()
+        audio = self.__add_noise(audio, noise, 1, 5)
+        if np.random.randint(0, 1):
+            noise = self.__get_random_noize()
+            audio = self.__add_noise(audio, noise, 1, 5)
+
+        # === Нормализуем звук ===
+        audio = audio / audio.abs().max()
+        melspec = self.mel_creator(audio)
+        # melspec = melspec * np.random.uniform(0.75, 1.5)
+
+        return melspec, CLASSES.index(self.classes[idx])
+
+    # def __random_pitch_shift(self, audio):
+    #     n_steps = np.random.randint(-5, 6)
+    #     # pitch_shift = PitchShift(16000, n_steps)
+
+    #     return Fa.pitch_shift(audio, 16000, n_steps)
+
+    def __random_speed(self, audio):
+        tempo = np.random.uniform(0.5, 2)
+        # n_steps = np.random.randint(-5, 6)
+        # resampler = T.Resample(16000, target_sr, dtype=torch.float32)
+        audio, _ = apply_effects_tensor(
+            audio, 16000, [["tempo", f"{tempo}"]], channels_first=True
+        )
+        return audio
+
+    def __get_random_noize(self):
+        noise_idx = np.random.randint(0, len(self.noises_paths))
         noise = self.noises_paths[noise_idx]
         if noise.shape[0] == 2:
             noise = noise[np.random.randint(0, 2)]
