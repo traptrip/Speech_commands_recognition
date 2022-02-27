@@ -143,7 +143,7 @@ if __name__ == "__main__":
     #     np.save(f, efficientnet_train_answers)
 
     xvector_ans, classes2 = xvector_infer_train(enc_classifier)
-    with open(PROJECT_DIR / "models/xvector_train_ans.npy", "wb") as f:
+    with open(PROJECT_DIR / "models/xvec_train_ans.npy", "wb") as f:
         np.save(f, xvector_ans)
 
     # print(xvector_ans)
