@@ -59,9 +59,9 @@ if __name__ == "__main__":
     test_dir = PROJECT_DIR / "hackaton_ds/test"
     test_markup = PROJECT_DIR / "hackaton_ds/submission_xvector_cos_sim.csv"
     test = TestData(test_dir, test_markup)
-    test_loader = DataLoader(test, batch_size=1, shuffle=False, num_workers=0)
+    # test_loader = DataLoader(test, batch_size=1, shuffle=False, num_workers=0)
 
-    model = load_checkpoint("models/efficientnet_25ep.pt").to(DEVICE)
+    model = load_checkpoint("models/efficientnet_70ep.pt").to(DEVICE)
     model.eval()
 
     test_answers = list()

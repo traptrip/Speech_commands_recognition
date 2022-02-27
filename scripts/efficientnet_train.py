@@ -90,18 +90,18 @@ class TrainData(Dataset):
 
         noise = self.__get_random_noize()
         audio = self.__add_noise(audio, noise, 0, 6)
-        # if np.random.randint(0, 1):
-        #     noise = self.__get_random_noize()
-        #     audio = self.__add_noise(audio, noise, 0, 6)
+        if np.random.randint(0, 1):
+            noise = self.__get_random_noize()
+            audio = self.__add_noise(audio, noise, 0, 6)
 
         audio = audio / audio.abs().max()
         melspec = self.mel_creator(audio)
-        # melspec = melspec * np.random.uniform(0.75, 1.5)
+        melspec = melspec * np.random.uniform(0.75, 1.5)
 
         return melspec, CLASSES.index(self.classes[idx])
 
     def __get_random_noize(self):
-        noise_idx = np.random.randint(0, len(self.noises_paths) - 1)
+        noise_idx = np.random.randint(0, len(self.noises_paths))
         noise = self.noises_paths[noise_idx]
         if noise.shape[0] == 2:
             noise = noise[np.random.randint(0, 2)]
@@ -169,25 +169,25 @@ class TestData(Dataset):
 
 
 def load_model():
-    # # === Efficientnet ===
-    # model = torch.hub.load(
-    #     "NVIDIA/DeepLearningExamples:torchhub",
-    #     "nvidia_efficientnet_b0",
-    #     pretrained=False,
-    # )
-    # model.stem.conv = nn.Conv2d(
-    #     1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False
-    # )
-    # num_ftrs = model.classifier.fc.in_features
-    # model.classifier.fc = nn.Linear(num_ftrs, 10, bias=True)
-
-    # === Resnet 16 ===
-    model = models.resnet18()
-    model.conv1 = nn.Conv2d(
-        1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+    # === Efficientnet ===
+    model = torch.hub.load(
+        "NVIDIA/DeepLearningExamples:torchhub",
+        "nvidia_efficientnet_b0",
+        pretrained=False,
     )
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, 10, bias=True)
+    model.stem.conv = nn.Conv2d(
+        1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False
+    )
+    num_ftrs = model.classifier.fc.in_features
+    model.classifier.fc = nn.Linear(num_ftrs, 10, bias=True)
+
+    # # === Resnet 16 ===
+    # model = models.resnet18()
+    # model.conv1 = nn.Conv2d(
+    #     1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+    # )
+    # num_ftrs = model.fc.in_features
+    # model.fc = nn.Linear(num_ftrs, 10, bias=True)
 
     return model
 
