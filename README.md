@@ -2,6 +2,6 @@ Speech commands recognition competition
 
 
 Models 
-- ResNet16
+- ResNet18
 - EfficientNet
 - speechbrain Xvector
