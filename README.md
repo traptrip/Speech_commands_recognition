@@ -8,7 +8,11 @@ Models
 
 
 ## Train
+```bash
 python3 scripts/bagging_train.py
+```
 
 ## Inference
+```bash
 python3 scripts/bagging_infer.py
+```
